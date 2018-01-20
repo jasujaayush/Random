@@ -10,21 +10,14 @@ mktcode = 'USDT-BTC'
 key = ""
 secret = ""
 api = crypto_bot.bittrex(key, secret)
-purchaseLimit = 50.0
-jump = 5.0
+purchaseLimit = 155.0
+jump = 0.01
 total = 0.0
-frequency = 60 #seconds
+frequency = 300 #seconds
+lastSellPrice = 100000000
 sellCounterInit = 3600/120 #one hour fall
 purchases = []
 
-'''
-data = json.load(open("GetTicksBTC5.json"))["result"]
-minute = 0
-g = []
-global minute
-d = {'Last':data[minute]['H']}
-minute += 1
-'''
 def getMarketSummary(mktcode):	
 	global api
 	d = api.getmarketsummary(mktcode)[0]
@@ -71,7 +64,7 @@ def haveOpenOrders(market):
 	return (result != 'INVALID_MARKET' and len(result) > 0)
 
 def TradeMarket(sch, mktcode, maximum, base, sellcounter):
-	global total, purchaseLimit, BTC, USDT, jump, frequency	
+	global total, purchaseLimit, BTC, USDT, jump, frequency,lastSellPrice
 	market = getMarketSummary(mktcode)
 	current = market['Last']
 
@@ -80,26 +73,23 @@ def TradeMarket(sch, mktcode, maximum, base, sellcounter):
 		pass
 	else:	
 		quantity = getBalance(BTC)
-		if quantity > 0.01:
+		if quantity > 0.00001:
 			purchase = purchaseLimit/quantity
 			print "Dealing with ", quantity, " BTC Units"
 			print "Prices- current: ", current, ", purchase: ", purchase
 			if quantity>0.0:
 				if current >= maximum:
 					maximum = current
-					sellcounter = sellCounterInit
 				else:
-					sufficientDown = ((maximum - current) > jump)#((maximum - current)/maximum > 0.01)#True
-					sellcounter -= 1
+					sufficientDown = ((maximum - current) > maximum*jump)
 					profit = (current*quantity - purchaseLimit - current*quantity*0.0025 - purchaseLimit*0.0025)
-					if (profit > 0 and sufficientDown and sell(mktcode, quantity, current)): #current < (purchase+5.0) or (sellcounter == 0):
+					if (profit > 0 and sufficientDown and sell(mktcode, quantity, current)):
 						total += profit
 						print current, purchase, " profit/loss: "+str(profit)+" total:" + str(total)
 						#g.append(total)
 						base = -1
-						maximum = -1
 						purchase = -1
-						sellcounter = sellCounterInit
+						lastSellPrice = current
 					else:	
 						pass
 		elif haveBalance(0,1,USDT):
@@ -110,10 +100,10 @@ def TradeMarket(sch, mktcode, maximum, base, sellcounter):
 			elif current < base:	
 				base = current
 				print "Updating base price ", base
-			elif current < (base + jump):
+			elif current < (base + base*jump):
 				pass
-			elif current >= (base + jump):
-				print "BTC is ", jump," USDT up, buying it at ",current
+			elif current >= (base + base*jump) and (current < lastSellPrice):
+				print "BTC is percent ", jump*100," up, buying it at ",current
 				purchaseQuantity = purchaseLimit/current
 				if buy(mktcode, purchaseQuantity, current):
 					maximum = current

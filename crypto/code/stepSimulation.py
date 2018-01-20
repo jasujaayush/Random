@@ -5,27 +5,27 @@ import json
 import matplotlib.pyplot as plt
 import random
 
-BCC = 'BCC'
+BCC = 'BTC'
 USDT = 'USDT'
-mktcode = 'USDT-BCC'
+mktcode = 'USDT-BTC'
 key = ""
 secret = ""
 api = crypto_bot.bittrex(key, secret)
-ustdBalance = 210
-purchaseLimit = 50
-jump = 10
+ustdBalance = 410
+purchaseLimit = 100
+jump = 0.005
 total = 0
 frequency = 0.001 #seconds
 quantity = 0
-purchases = []
+purchases = {}
 
-data = json.load(open("GetTicks.json"))["result"]
+data = json.load(open("BTC18DecOneMin.json"))["result"]
 minute = 0
 g = []
 
 def getMarketSummary(mktcode):	
 	global api,minute
-	d = {'Last':data[minute]['H']}
+	d = data[minute]
 	minute += 1
 	return d
 
@@ -38,51 +38,61 @@ def sell(market, quantity, rate):
 def haveOpenOrders(market):
 	False
 
+def Bracket(current, purchases, market):
+	intervals = (ustdBalance/purchaseLimit)
+	window = 1000/intervals
+	bracket = int(intervals - (19000 - current)/window)
+	return bracket
+
 def TradeMarket(sch, mktcode, maximum, base, sellcounter):
 	global total, purchaseLimit, BCC, USDT, jump, frequency, quantity, minute, ustdBalance, purchases
 
 	if minute > len(data)-1: return
 
 	market = getMarketSummary(mktcode)
-	current = market['Last']
-	
+	current = market['C']
+	#print current
 	if haveOpenOrders(mktcode):
 		pass
 	else:	
-		if (ustdBalance>purchaseLimit*(1+0.0025)) and len(purchases)<8:
-			if base < 0:
+		if (ustdBalance>purchaseLimit*(1+0.0025)):
+			bracket =  Bracket(current, purchases, market)
+			if base < 0 or current < base:
 				base = current
-			elif current < base:	
-				base = current
-			elif current < (base + jump):
+			elif current < (base*(1+jump)):
 				pass
-			elif current >= (base + jump):
+			elif (current-base) >= base*jump and (bracket < 4) and (bracket >= 0) and (bracket not in purchases):
 				base = current
 				purchaseQuantity = purchaseLimit/current
-				ustdBalance -= purchaseLimit*(1+0.0025)
 				if buy(market, purchaseQuantity, current):
+					ustdBalance -= purchaseLimit*(1+0.0025)
 					purchase = current
 					quantity = purchaseQuantity
-					purchases.append(quantity)
+					purchases[bracket] = purchaseQuantity
 					#print ustdBalance, purchases
 
 		if len(purchases)>0:
+			tempProfit = 0
 			if current >= maximum:
 				maximum = current
-			else:
-				notSold = []
-				for quantity in purchases:
-					purchase = purchaseLimit/quantity
-					sufficientDown = ((maximum - current) > jump)#((maximum - current)/maximum > 0.01)#True
+			elif ((maximum - current) > maximum*jump): #sufficientDown
+				for bracket in purchases:
+					quantity = purchases[bracket]
+					purchase = purchaseLimit/quantity	
 					profit = (current*quantity - purchaseLimit - current*quantity*0.0025 - purchaseLimit*0.0025)
-					if (profit > 0 and sufficientDown):# or (purchase - current > 0.50*purchase):
+					if (profit > 0):
 						total += profit
-						print minute, current, purchase, " profit/loss: "+str(profit)+" total:" + str(total)
-						g.append(total)
+						tempProfit += profit
 						ustdBalance += quantity*current*(1-0.0025)
-					else:
-						notSold.append(quantity)	
-				purchases = notSold[:]		
+						purchases[bracket] = 0
+
+				for bracket,quantity in purchases.items():
+					if quantity == 0:
+						del purchases[bracket]
+
+			if tempProfit>0:
+				g.append(total)			
+				print minute, current, purchase, " profit/loss: "+str(tempProfit)+" total:" + str(total)	
 
 	sch.enter(frequency, 1, TradeMarket, (sch,mktcode,maximum,base, sellcounter))
 
